@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Runtime Overview",
+    "description": "Shows every running DSH session as a quarter-window card, opens one on click, and returns to the grid in one click."
+  }
+}
