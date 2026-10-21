@@ -25,7 +25,7 @@ DeepSeek Harness 的 Web GUI 插件。它把当前与最近需要的会话排成
 | 目标、待办、上下文占用、Token、最近输入、计费 Token 桶 | 会话投影 `goal`、`todos`、`contextPressure`、`tokenUsage`、`contextTimeline` |
 | 看板任务标题 | 任务看板只读接口 `/api/task-board/state` |
 
-费用不是从事件流重新累计的：它直接使用上下文洞察插件已经折叠好的计费 Token 桶，按 models.dev 的 DeepSeek 挂牌价折算，高峰原价、非高峰半价，人民币按 1 元等于 0.15 美元换算。价格表写在 `client.js` 的 `MODEL_PRICES` 里，遇到未收录的模型会显示「—」而不是编造数字。
+费用不是从事件流重新累计的：它直接使用上下文洞察插件已经折叠好的计费 Token 桶，按 models.dev 的 DeepSeek 挂牌价折算。DeepSeek 高峰时段按挂牌价的 2 倍计费，非高峰按挂牌价；人民币按 1 元等于 0.15 美元换算。费用含子智能体会话，和上下文洞察的「总预估费用」同口径。价格表写在 `client.js` 的 `MODEL_PRICES` 里，遇到未收录的模型会显示「—」而不是编造数字。
 
 ## 安装
 
