@@ -1,0 +1,54 @@
+{
+  "name": "@local/runtime-overview",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "运行总览：在 DSH Web GUI 里用四宫格查看运行中、完成未读、等待处理的会话，点击进入，一键返回。",
+  "icon": "icon.svg",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/sandwich-xz/dsh-session-dashboard.git"
+  },
+  "homepage": "https://github.com/sandwich-xz/dsh-session-dashboard",
+  "keywords": [
+    "deepseek-harness",
+    "dsh",
+    "plugin",
+    "session",
+    "dashboard"
+  ],
+  "exports": {
+    ".": "./index.js",
+    "./client": "./client.js",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg"
+  },
+  "files": [
+    "index.js",
+    "client.js",
+    "cordis.patch.yml",
+    "locale/*.json",
+    "icon.svg",
+    "README.md",
+    "LICENSE"
+  ],
+  "dsh": {
+    "engines": {
+      "dsh": ">=0.2.0-rc.2"
+    },
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "immediately": true,
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-session",
+        "@deepseek-ai/dsh-client-ui-workspace",
+        "@deepseek-ai/dsh-client-ui-layout",
+        "@deepseek-ai/dsh-client-ui-sidebar"
+      ]
+    }
+  }
+}
