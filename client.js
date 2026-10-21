@@ -41,6 +41,7 @@ window.__ModuleLoader__.load({
       'todo.progress': '待办 {done}/{total}',
       'fact.context': '上下文',
       'fact.cost': '费用',
+      'fact.costTip': '含子智能体会话；DeepSeek 峰时按 2 倍挂牌价、非峰按挂牌价估算',
       'fact.tokens': 'Token',
       'fact.elapsed': '运行时长',
       'fact.activity': '最近活动',
@@ -89,6 +90,7 @@ window.__ModuleLoader__.load({
       'todo.progress': 'To-do {done}/{total}',
       'fact.context': 'Context',
       'fact.cost': 'Cost',
+      'fact.costTip': 'Includes subagent sessions; DeepSeek peak at 2x list, off-peak at list',
       'fact.tokens': 'Tokens',
       'fact.elapsed': 'Elapsed',
       'fact.activity': 'Active',
@@ -344,8 +346,9 @@ window.__ModuleLoader__.load({
     }
 
     /**
-     * Cost in USD from the billed-token totals dsh-context already folded, with
-     * peak windows at list price and off-peak at half price.
+     * Cost in USD from the billed-token totals dsh-context already folded.
+     * DeepSeek prices its peak windows at twice the models.dev list rate and
+     * off-peak at the list rate; other providers book everything at list.
      */
     function costUsdOf(timeline, modelSelection) {
       const cost = timeline && timeline.cost
@@ -357,6 +360,7 @@ window.__ModuleLoader__.load({
       for (const provider of Object.keys(cost)) {
         const models = cost[provider]
         if (!models || typeof models !== 'object') continue
+        const deepseek = String(provider).toLowerCase().indexOf('deepseek') !== -1
         for (const model of Object.keys(models)) {
           const entry = models[model]
           if (!entry || typeof entry !== 'object') continue
@@ -364,7 +368,7 @@ window.__ModuleLoader__.load({
             const totals = entry[bucket]
             if (!totals || typeof totals !== 'object') continue
             priced = true
-            const factor = bucket === 'off' ? 0.5 : 1
+            const factor = bucket === 'peak' && deepseek ? 2 : 1
             usd += factor * (
               (totals.uncached || 0) * rates.input +
               (totals.cacheRead || 0) * rates.cacheRead +
@@ -626,6 +630,11 @@ window.__ModuleLoader__.load({
           const row = snapshot && snapshot.byId ? snapshot.byId[id] : undefined
           if (row) rows.push(row)
         }
+        // The catalog keeps retained subagent rows out of `ids`; cost aggregation
+        // still needs them, so walk every byId row separately from display order.
+        const catalogRows = snapshot && snapshot.byId
+          ? Object.keys(snapshot.byId).map(function (id) { return snapshot.byId[id] }).filter(function (row) { return row !== undefined && row !== null })
+          : rows
 
         const active = []
         const all = []
@@ -682,6 +691,27 @@ window.__ModuleLoader__.load({
           return 'state.seen'
         }
 
+        /**
+         * Cost for one session plus every subagent session beneath it, the same
+         * family basis the Context Insights card uses. Memoized per render.
+         */
+        const familyCostMemo = new Map()
+        const familyCostOf = function (target, depth) {
+          if (depth > 6) return undefined
+          if (familyCostMemo.has(target.id)) return familyCostMemo.get(target.id)
+          const projection = snapshot && snapshot.projectionsBySession ? snapshot.projectionsBySession[target.id] : undefined
+          const values = projection && projection.values ? projection.values : undefined
+          let total = costUsdOf(values && values.contextTimeline, values && values.modelSelection)
+          for (const child of catalogRows) {
+            if (child.parentId !== target.id || child.origin !== 'subagent') continue
+            const sub = familyCostOf(child, depth + 1)
+            if (sub === undefined) continue
+            total = (total === undefined ? 0 : total) + sub
+          }
+          familyCostMemo.set(target.id, total)
+          return total
+        }
+
         const cards = []
         for (let cardIndex = 0; cardIndex < items.length; cardIndex += 1) {
           const entry = items[cardIndex]
@@ -706,14 +736,22 @@ window.__ModuleLoader__.load({
             ? (tokenUsage.uncachedInputTokens || 0) + (tokenUsage.outputTokens || 0) + (tokenUsage.cacheReadTokens || 0) + (tokenUsage.cacheWriteTokens || 0)
             : undefined
           const pressure = values && values.contextPressure ? values.contextPressure : undefined
-          const contextPercent = pressure && typeof pressure.contextWindow === 'number' && pressure.contextWindow > 0 && typeof pressure.projectedTokens === 'number'
-            ? Math.max(0, Math.min(100, Math.round((pressure.projectedTokens / pressure.contextWindow) * 100)))
+          const surfaceTokens = timeline && timeline.current && typeof timeline.current.total === 'number' ? timeline.current.total : undefined
+          const windowTokens = timeline && typeof timeline.contextWindow === 'number' && timeline.contextWindow > 0
+            ? timeline.contextWindow
+            : (pressure && typeof pressure.contextWindow === 'number' && pressure.contextWindow > 0 ? pressure.contextWindow : undefined)
+          const pressureTokens = pressure && typeof pressure.pressureTokens === 'number'
+            ? pressure.pressureTokens
+            : (pressure && typeof pressure.projectedTokens === 'number' ? pressure.projectedTokens : undefined)
+          const contextTokens = surfaceTokens !== undefined ? surfaceTokens : pressureTokens
+          const contextPercent = contextTokens !== undefined && windowTokens !== undefined
+            ? Math.max(0, Math.min(100, Math.round((contextTokens / windowTokens) * 100)))
             : undefined
-          const costUsd = costUsdOf(timeline, modelSelection)
+          const costUsd = familyCostOf(row, 0)
           const lastUser = timeline && typeof timeline.lastUser === 'string' ? timeline.lastUser.trim() : ''
           const timeLabel = entry.state === 'running' && started ? duration(dict, now - started) : ago(dict, now, row.updatedAt)
-          const fact = function (key, label, value, meter) {
-            return h('div', { key: key, className: 'ro-fact' },
+          const fact = function (key, label, value, meter, title) {
+            return h('div', { key: key, className: 'ro-fact', title: title || undefined },
               h('span', { className: 'ro-factLabel' }, label),
               h('span', { className: 'ro-factValue' }, value),
               meter === undefined ? null : h('div', { className: 'ro-meter' }, h('i', { style: { width: meter + '%' } }))
@@ -753,7 +791,7 @@ window.__ModuleLoader__.load({
             ) : null,
             h('div', { className: 'ro-facts' },
               fact('context', t('fact.context'), contextPercent === undefined ? '\u2014' : contextPercent + '%', contextPercent === undefined ? 0 : contextPercent),
-              fact('cost', t('fact.cost'), moneyText(costUsd, dict === ZH)),
+              fact('cost', t('fact.cost'), moneyText(costUsd, dict === ZH), undefined, t('fact.costTip')),
               fact('tokens', t('fact.tokens'), tokensText(totalTokens)),
               fact('time', entry.state === 'running' ? t('fact.elapsed') : t('fact.activity'), timeLabel)
             ),
